@@ -572,6 +572,10 @@ Resources:
           IpProtocol: tcp
           FromPort: !FindInMap ["MoodleMap", "SSH", "Port"]
           ToPort: !FindInMap ["MoodleMap", "SSH", "Port"]
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: tcp
+          FromPort: !FindInMap ["MoodleMap", "HTTPS", "Port"]
+          ToPort: !FindInMap ["MoodleMap", "HTTPS", "Port"]
       Tags:
         - Key: Name
           Value: !Sub "${ApplicationName}-ec2-build-sg"
