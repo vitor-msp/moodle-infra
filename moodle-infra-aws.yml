@@ -28,6 +28,10 @@ Parameters:
     Type: Number
     Default: 0
     Description: Number of Moodle instances to run
+  LaunchTemplateVersion:
+    Type: Number
+    Default: 1
+    Description: Launch template version (use 2 after install Moodle)
 
 Mappings:
   VPCMap:
@@ -362,7 +366,7 @@ Resources:
       DesiredCapacity: !Ref NumberOfInstances
       NewInstancesProtectedFromScaleIn: false
       LaunchTemplate:
-        Version: "1"
+        Version: !Ref LaunchTemplateVersion
         LaunchTemplateId: !Ref LaunchTemplate
       AutoScalingGroupName: !Sub "${ApplicationName}-asg"
       HealthCheckType: "EC2"
