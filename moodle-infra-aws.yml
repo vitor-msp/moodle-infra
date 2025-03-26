@@ -1,0 +1,615 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Moodle infrastructure (including vpc, alb, autoscaling, rds, efs, elasticache)
+
+Parameters:
+  ApplicationName:
+    Type: String
+    Default: moodle
+    Description: Application name
+  DBPassword:
+    Type: String
+    NoEcho: true
+    Description: Database password
+  CachePassword:
+    Type: String
+    NoEcho: true
+    Description: Cache password
+  MoodleAMIImageID:
+    Type: String
+    Default: ami-084568db4383264d4
+    Description: Moodle AMI image ID (default is Ubuntu 24.04 LTS)
+  KeyPairName:
+    Type: String
+    Description: Key pair name for access Moodle instances
+  MoodleTLSCertificateARN:
+    Type: String
+    Description: Moodle TLS certificate ARN
+  NumberOfInstances:
+    Type: Number
+    Default: 0
+    Description: Number of Moodle instances to run
+
+Mappings:
+  VPCMap:
+    VPC:
+      CIDR: "10.0.0.0/16"
+    Public01:
+      CIDR: "10.0.0.0/24"
+    Public02:
+      CIDR: "10.0.1.0/24"
+    Private01:
+      CIDR: "10.0.2.0/24"
+    Private02:
+      CIDR: "10.0.3.0/24"
+  MoodleMap:
+    Database:
+      Port: "5432"
+      Name: "moodle"
+      User: "moodleuser"
+    Cache:
+      Port: "6379"
+      User: "default"
+    FileSystem:
+      Port: "2049"
+    HTTP:
+      Port: "80"
+    HTTPS:
+      Port: "443"
+    SSH:
+      Port: "22"
+
+Resources:
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !FindInMap ["VPCMap", "VPC", "CIDR"]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-vpc"
+  PublicSubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref "VPC"
+      CidrBlock: !FindInMap ["VPCMap", "Public01", "CIDR"]
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-pub-subnet-01"
+  PublicSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref "VPC"
+      CidrBlock: !FindInMap ["VPCMap", "Public02", "CIDR"]
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref "AWS::Region"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-pub-subnet-02"
+  PrivateSubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref "VPC"
+      CidrBlock: !FindInMap ["VPCMap", "Private01", "CIDR"]
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-priv-subnet-01"
+  PrivateSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref "VPC"
+      CidrBlock: !FindInMap ["VPCMap", "Private02", "CIDR"]
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref "AWS::Region"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-priv-subnet-02"
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-igw"
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref "InternetGateway"
+      VpcId: !Ref "VPC"
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref "VPC"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-pub-rtb"
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref "PublicRouteTable"
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref "InternetGateway"
+  PublicSubnet01RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet01
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnet02RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet02
+      RouteTableId: !Ref PublicRouteTable
+  ElasticIP01:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-eip-01"
+  NatGateway01:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIP01.AllocationId
+      SubnetId: !Ref PublicSubnet01
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-natg-01"
+  ElasticIP02:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-eip-02"
+  NatGateway02:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIP02.AllocationId
+      SubnetId: !Ref PublicSubnet02
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-natg-02"
+  PrivateRouteTable01:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref "VPC"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-priv-rtb-01"
+  PrivateRoute01:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable01
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway01
+  PrivateRouteTable01Association:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet01
+      RouteTableId: !Ref PrivateRouteTable01
+  PrivateRouteTable02:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref "VPC"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-priv-rtb-02"
+  PrivateRoute02:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable02
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway02
+  PrivateRouteTable02Association:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet02
+      RouteTableId: !Ref PrivateRouteTable02
+
+  # load balancing
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ApplicationName}-alb-sg"
+      GroupDescription: allows access to web from internet
+      VpcId: !Ref "VPC"
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-alb-sg"
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: 60
+      Subnets:
+        - !Ref "PublicSubnet01"
+        - !Ref "PublicSubnet02"
+      SecurityGroups: [!Ref "LoadBalancerSecurityGroup"]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-alb"
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${ApplicationName}-tg"
+      TargetType: instance
+      HealthCheckPort: traffic-port
+      Protocol: HTTPS
+      Port: 443
+      VpcId: !Ref "VPC"
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /admin/tool/heartbeat/
+      HealthCheckProtocol: HTTPS
+      HealthCheckTimeoutSeconds: 29
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Matcher:
+        HttpCode: "200-399"
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 30
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-tg"
+  LoadBalancerHTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref "LoadBalancer"
+      Protocol: HTTPS
+      Port: 443
+      Certificates:
+        - CertificateArn: !Ref MoodleTLSCertificateARN
+      DefaultActions:
+        - Type: "forward"
+          TargetGroupArn: !Ref "TargetGroup"
+  LoadBalancerHTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref "LoadBalancer"
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+      - Order: 1
+        Type: "redirect"
+        RedirectConfig:
+          Path: "/#{path}"
+          Host: "#{host}"
+          Query: "#{query}"
+          Protocol: "HTTPS"
+          StatusCode: "HTTP_301"
+          Port: "443"
+
+  # AutoScaling Group
+  IAMRoleCloudWatchAgent:
+    Type: "AWS::IAM::Role"
+    Properties:
+      ManagedPolicyArns:
+      - "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+      RoleName: "cloudwatch-agent-in-ec2"
+      Description: "allows ec2 instances to use cloud watch agent"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Action: "sts:AssumeRole"
+          Effect: "Allow"
+          Principal:
+            Service: "ec2.amazonaws.com"
+  IAMInstanceProfileCloudWatchAgent:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Roles:
+      - !Ref IAMRoleCloudWatchAgent
+      InstanceProfileName: !Ref IAMRoleCloudWatchAgent
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: !Sub ${ApplicationName}-ec2-sg
+      GroupDescription: allows access to web from alb
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !GetAtt LoadBalancerSecurityGroup.GroupId
+          IpProtocol: tcp
+          FromPort: !FindInMap ["MoodleMap", "HTTPS", "Port"]
+          ToPort: !FindInMap ["MoodleMap", "HTTPS", "Port"]
+        - SourceSecurityGroupId: !GetAtt BuildInstanceEC2SecurityGroup.GroupId
+          IpProtocol: tcp
+          FromPort: !FindInMap ["MoodleMap", "SSH", "Port"]
+          ToPort: !FindInMap ["MoodleMap", "SSH", "Port"]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-ec2-sg"
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub "${ApplicationName}-lt"
+      VersionDescription: "launch template for moodle instance"
+      LaunchTemplateData:
+        IamInstanceProfile: 
+          Arn: !GetAtt IAMInstanceProfileCloudWatchAgent.Arn
+        ImageId: !Ref MoodleAMIImageID
+        InstanceType: t2.micro
+        KeyName: !Ref KeyPairName
+        SecurityGroupIds: 
+          - !Ref EC2SecurityGroup
+  AutoScalingGroup:
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      TargetGroupARNs:
+      - !Ref TargetGroup
+      HealthCheckGracePeriod: 120
+      MinSize: "0"
+      MaxSize: "5"
+      DesiredCapacity: !Ref NumberOfInstances
+      NewInstancesProtectedFromScaleIn: false
+      LaunchTemplate:
+        Version: "1"
+        LaunchTemplateId: !Ref LaunchTemplate
+      AutoScalingGroupName: !Sub "${ApplicationName}-asg"
+      HealthCheckType: "EC2"
+      VPCZoneIdentifier:
+      - !Ref PrivateSubnet01
+      - !Ref PrivateSubnet02
+  AutoScalingScalingPolicy:
+    Type: "AWS::AutoScaling::ScalingPolicy"
+    Properties:
+      PolicyType: "TargetTrackingScaling"
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: "ASGAverageCPUUtilization"
+        TargetValue: 80
+        DisableScaleIn: true
+      EstimatedInstanceWarmup: 120
+      AutoScalingGroupName: !Ref AutoScalingGroup
+
+  # Database
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: !Sub ${ApplicationName}-rds-sg
+      GroupDescription: allows access to postgres from moodle instances
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !GetAtt EC2SecurityGroup.GroupId
+          IpProtocol: tcp
+          FromPort: !FindInMap ["MoodleMap", "Database", "Port"]
+          ToPort: !FindInMap ["MoodleMap", "Database", "Port"]
+        - SourceSecurityGroupId: !GetAtt BuildInstanceEC2SecurityGroup.GroupId
+          IpProtocol: tcp
+          FromPort: !FindInMap ["MoodleMap", "Database", "Port"]
+          ToPort: !FindInMap ["MoodleMap", "Database", "Port"]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-rds-sg"
+  DatabaseSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupName: !Sub "${ApplicationName}-rds-subnet-group"
+      DBSubnetGroupDescription: subnet group for database
+      SubnetIds:
+        - !Ref PrivateSubnet01
+        - !Ref PrivateSubnet02
+  DatabaseInstance:
+    Type: "AWS::RDS::DBInstance"
+    Properties:
+      StorageEncrypted: true
+      Port: !FindInMap ["MoodleMap", "Database", "Port"]
+      CopyTagsToSnapshot: true
+      BackupRetentionPeriod: 7
+      DeleteAutomatedBackups: false
+      MultiAZ: false
+      Engine: "postgres"
+      EngineLifecycleSupport: "open-source-rds-extended-support-disabled"
+      LicenseModel: "postgresql-license"
+      EngineVersion: "17.2"
+      StorageType: "gp2"
+      DBInstanceClass: "db.t4g.micro"
+      EnablePerformanceInsights: true
+      DBSubnetGroupName: !Ref "DatabaseSubnetGroup"
+      DBInstanceIdentifier: !Sub "${ApplicationName}-rds"
+      AllocatedStorage: "20"
+      ManageMasterUserPassword: false
+      VPCSecurityGroups:
+        - !GetAtt DatabaseSecurityGroup.GroupId
+      MasterUsername: !FindInMap ["MoodleMap", "Database", "User"]
+      MasterUserPassword: !Ref DBPassword
+      DBName: !FindInMap ["MoodleMap", "Database", "Name"]
+      PubliclyAccessible: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-rds"
+
+  # File System
+  FileSystemSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: !Sub ${ApplicationName}-efs-sg
+      GroupDescription: allows access to nfs from moodle instances
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !GetAtt EC2SecurityGroup.GroupId
+          IpProtocol: tcp
+          FromPort: !FindInMap ["MoodleMap", "FileSystem", "Port"]
+          ToPort: !FindInMap ["MoodleMap", "FileSystem", "Port"]
+        - SourceSecurityGroupId: !GetAtt BuildInstanceEC2SecurityGroup.GroupId
+          IpProtocol: tcp
+          FromPort: !FindInMap ["MoodleMap", "FileSystem", "Port"]
+          ToPort: !FindInMap ["MoodleMap", "FileSystem", "Port"]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-efs-sg"
+  MoodleCodeFileSystem:
+    Type: "AWS::EFS::FileSystem"
+    Properties:
+      Encrypted: true
+      FileSystemTags:
+      - Key: "Name"
+        Value: "moodle-code"
+      ThroughputMode: "elastic"
+      BackupPolicy:
+        Status: "ENABLED"
+  MoodleCodeMountTarget01:
+    Type: "AWS::EFS::MountTarget"
+    Properties:
+      SecurityGroups:
+        - !Ref FileSystemSecurityGroup
+      FileSystemId:
+        !Ref MoodleCodeFileSystem
+      SubnetId: !Ref PrivateSubnet01
+  MoodleCodeMountTarget02:
+    Type: "AWS::EFS::MountTarget"
+    Properties:
+      SecurityGroups:
+        - !Ref FileSystemSecurityGroup
+      FileSystemId:
+        !Ref MoodleCodeFileSystem
+      SubnetId: !Ref PrivateSubnet02
+  MoodleDataFileSystem:
+    Type: "AWS::EFS::FileSystem"
+    Properties:
+      Encrypted: true
+      FileSystemTags:
+      - Key: "Name"
+        Value: "moodle-data"
+      ThroughputMode: "elastic"
+      BackupPolicy:
+        Status: "ENABLED"
+  MoodleDataMountTarget01:
+    Type: "AWS::EFS::MountTarget"
+    Properties:
+      SecurityGroups:
+        - !Ref FileSystemSecurityGroup
+      FileSystemId:
+        !Ref MoodleDataFileSystem
+      SubnetId: !Ref PrivateSubnet01
+  MoodleDataMountTarget02:
+    Type: "AWS::EFS::MountTarget"
+    Properties:
+      SecurityGroups:
+        - !Ref FileSystemSecurityGroup
+      FileSystemId:
+        !Ref MoodleDataFileSystem
+      SubnetId: !Ref PrivateSubnet02
+
+  # Cache
+  CacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: !Sub ${ApplicationName}-cache-sg
+      GroupDescription: allows access to redis from moodle instances
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !GetAtt EC2SecurityGroup.GroupId
+          IpProtocol: tcp
+          FromPort: !FindInMap ["MoodleMap", "Cache", "Port"]
+          ToPort: !FindInMap ["MoodleMap", "Cache", "Port"]
+        - SourceSecurityGroupId: !GetAtt BuildInstanceEC2SecurityGroup.GroupId
+          IpProtocol: tcp
+          FromPort: !FindInMap ["MoodleMap", "Cache", "Port"]
+          ToPort: !FindInMap ["MoodleMap", "Cache", "Port"]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-cache-sg"
+  CacheSubnetGroup:
+    Type: "AWS::ElastiCache::SubnetGroup"
+    Properties:
+      CacheSubnetGroupName: !Sub "${ApplicationName}-cache-subnet-group"
+      Description: "subnet group for moodle cache"
+      SubnetIds:
+      - !Ref PrivateSubnet01
+      - !Ref PrivateSubnet02
+  CacheReplicationGroup:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      AtRestEncryptionEnabled: true
+      AuthToken: !Ref CachePassword
+      AutomaticFailoverEnabled: true
+      AutoMinorVersionUpgrade: true
+      CacheNodeType: cache.t3.micro
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      ClusterMode: Disabled
+      Engine: redis
+      EngineVersion: 7.1
+      MultiAZEnabled: true
+      Port: !FindInMap ["MoodleMap", "Cache", "Port"]
+      ReplicasPerNodeGroup: 1
+      ReplicationGroupDescription: !Sub "${ApplicationName}-cache"
+      SecurityGroupIds: 
+        - !Ref CacheSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-cache"
+      TransitEncryptionEnabled: true
+
+  # Build instance
+  BuildInstanceEC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: !Sub ${ApplicationName}-ec2-build-sg
+      GroupDescription: allows access to ssh from internet
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: tcp
+          FromPort: !FindInMap ["MoodleMap", "SSH", "Port"]
+          ToPort: !FindInMap ["MoodleMap", "SSH", "Port"]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ApplicationName}-ec2-build-sg"
+
+Outputs:
+  LoadBalancerUrl:
+    Description: Moodle public URL
+    Value: !Sub https://${LoadBalancer.DNSName}
+  DatabaseHostname:
+    Description: Database hostname
+    Value: !GetAtt DatabaseInstance.Endpoint.Address
+  DatabasePort:
+    Description: Database port
+    Value: !GetAtt DatabaseInstance.Endpoint.Port
+  DatabaseUser:
+    Description: Database user
+    Value: !FindInMap ["MoodleMap", "Database", "User"]
+  CacheHostname:
+    Description: Cache hostname
+    Value: !GetAtt CacheReplicationGroup.PrimaryEndPoint.Address
+  CachePort:
+    Description: Cache port
+    Value: !GetAtt CacheReplicationGroup.PrimaryEndPoint.Port
+  CacheUser:
+    Description: Cache user
+    Value: !FindInMap ["MoodleMap", "Cache", "User"]
+  MoodleDataEFSHostname:
+    Description: Moodle data EFS hostname
+    Value: !Sub "${MoodleDataFileSystem}.efs.${AWS::Region}.amazonaws.com"
+  MoodleCodeEFSHostname:
+    Description: Moodle code EFS hostname
+    Value: !Sub "${MoodleCodeFileSystem}.efs.${AWS::Region}.amazonaws.com"
+  VpcId:
+    Description: VPC Id
+    Value: !Ref VPC
+  PublicSubnet01Id:
+    Description: Id of the public subnet 01
+    Value: !Ref PublicSubnet01
+  BuildInstanceEC2SecurityGroupId:
+    Description: EC2 security group id of build instance
+    Value: !Ref BuildInstanceEC2SecurityGroup
