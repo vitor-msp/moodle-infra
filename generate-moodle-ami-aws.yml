@@ -1,0 +1,65 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: EC2 instance to generate Moodle AMI
+
+Parameters:
+  VpcId:
+    Type: String
+    Description: Id of the VPC where the instance will be launched
+  SubnetId:
+    Type: String
+    Description: Id of the subnet where the instance will be launched
+  SecurityGroupId:
+    Type: String
+    Description: Id of the security group that the instance will use
+  KeyPairName:
+    Type: String
+    Description: Key pair name for access Moodle instances
+  LoadBalancerUrl:
+    Type: String
+    Description: Mooodle URL
+  MoodleDataEFSHostname:
+    Type: String
+    Description: Moodle data EFS hostname
+  MoodleCodeEFSHostname:
+    Type: String
+    Description: Moodle code EFS hostname
+
+Mappings:
+  MoodleMap:
+    AmiId:
+      Ubuntu2404: "ami-084568db4383264d4"
+
+Resources:
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !FindInMap ["MoodleMap", "AmiId", "Ubuntu2404"]
+      InstanceType: t2.micro
+      KeyName: !Ref KeyPairName
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          AssociatePublicIpAddress: true
+          GroupSet: 
+            - !Ref SecurityGroupId
+          SubnetId: !Ref SubnetId
+      Tags:
+        - Key: Name
+          Value: !Sub "moodle-ec2-build"
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          cd /root
+          git clone https://github.com/vitor-msp/moodle-scripts.git
+          cd moodle-scripts
+          export MOODLE_DATA_EFS_HOSTNAME=${MoodleDataEFSHostname}
+          export MOODLE_CODE_EFS_HOSTNAME=${MoodleCodeEFSHostname}
+          export MOODLE_URL=${LoadBalancerUrl}
+          ./install-moodle.sh
+
+Outputs:
+  SSHCommand:
+    Description: SSH command to connect to the instance
+    Value: !Sub ssh -i "${KeyPairName}.pem" ubuntu@${EC2Instance.PublicDnsName}
+  EC2Url:
+    Description: URL to connect to EC2 to configuring Moodle
+    Value: !Sub https://${EC2Instance.PublicDnsName}
