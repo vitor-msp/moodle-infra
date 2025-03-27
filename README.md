@@ -184,6 +184,16 @@ Ver no [GitHub](https://github.com/vitor-msp/moodle-infra).
 
 ![access moodle](images/42-access-moodle.png)
 
+#### Remoção de recursos
+
+Para remover todos os recursos usados neste tutorial, além de remover as stacks, é necessário checar outros recursos que não são deletados junto com ela:
+- RDS Snapshot: gerado na exclusão do RDS
+- CloudWatch Log Groups: logs do Nginx
+- AMI: imagens geradas
+- EBS Snapshot: gerados para uso do AMI
+- Certificado: criado no início do tutorial
+- S3: arquivos de upload do CloudFormation
+
 ---
 
 fim
