@@ -28,7 +28,7 @@ Ver no [GitHub](https://github.com/vitor-msp/moodle-infra).
 
 ![create stack](images/5-create-stack.png)
 
-6. Preencha todos os parâmetros exigidos e apenas os vazios (sem valor default), e crie a stack. Pode levar até uns 20 minutos para finalizar a criação. Quando finalizar, os outputs estarão disponíveis, os quais serão usados em seguida.
+6. Preencha todos os parâmetros exigidos e apenas os vazios (sem valor default). Busque o AMI id do Ubuntu 24.04 LTS na região da AWS em que está e crie a stack. Pode levar até uns 20 minutos para finalizar a criação. Quando finalizar, os outputs estarão disponíveis, os quais serão usados em seguida.
 
 ![create stack](images/6-create-stack.png)
 

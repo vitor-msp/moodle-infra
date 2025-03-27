@@ -16,8 +16,7 @@ Parameters:
     Description: Cache password
   MoodleAMIImageID:
     Type: String
-    Default: ami-084568db4383264d4
-    Description: Moodle AMI image ID (default is Ubuntu 24.04 LTS)
+    Description: Moodle AMI image ID
   KeyPairName:
     Type: String
     Description: Key pair name for access Moodle instances
