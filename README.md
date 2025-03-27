@@ -10,7 +10,7 @@ Ver no [GitHub](https://github.com/vitor-msp/moodle-infra).
 
 ![import certificate](images/1-import-certificate.png)
 
-2. Copie o conteúdo do certificado nos campos apropriados.
+2. Copie o conteúdo do certificado nos campos apropriados e salve.
 
 ![import certificate](images/2-import-certificate.png)
 
@@ -78,7 +78,7 @@ Ver no [GitHub](https://github.com/vitor-msp/moodle-infra).
 
 ![configure moodle](images/17-configure-moodle.png)
 
-18. Se for direcionado a tela inicial do Moodle, a sua instalação foi finalizada com sucesso.
+18. Se for direcionado à tela inicial do Moodle, sua instalação foi finalizada com sucesso.
 
 ![configure moodle](images/18-configure-moodle.png)
 
@@ -88,7 +88,7 @@ Ver no [GitHub](https://github.com/vitor-msp/moodle-infra).
 
 ![configure cache](images/19-configure-cache.png)
 
-20. Em "caching", acesse "configurações".
+20. Em "caching", acesse "configuração".
 
 ![configure cache](images/20-configure-cache.png)
 
@@ -96,7 +96,7 @@ Ver no [GitHub](https://github.com/vitor-msp/moodle-infra).
 
 ![configure cache](images/21-configure-cache.png)
 
-22. Preencha as informações de acesso ao cache e salve. Você será direcionado a página anterior.
+22. Preencha as informações de acesso ao cache e salve. No campo "servidores" use o hostname e a porta separados por dois pontos, como na imagem. Marque o checkbox "use a criptografia tls". Você será direcionado a página anterior.
 
 ![configure cache](images/22-configure-cache.png)
 
@@ -104,7 +104,7 @@ Ver no [GitHub](https://github.com/vitor-msp/moodle-infra).
 
 ![configure cache](images/23-configure-cache.png)
 
-24. Preencha "aplicação" e "sessão" com a instância de cache criada. Isso finalizará a configuração do cache.
+24. Preencha "aplicação" e "sessão" com a instância de cache criada e salve. Isso finalizará a configuração do cache.
 
 ![configure cache](images/24-configure-cache.png)
 
@@ -114,11 +114,11 @@ Ver no [GitHub](https://github.com/vitor-msp/moodle-infra).
 
 ![configure healthcheck](images/25-configure-healthcheck.png)
 
-26. Accesse a URL do load balancer usando a rota */admin/settings.php?section=tool_heartbeat*. Todos os itens devem estar marcados com ok. Apenas siga em frente.
+26. Após finalização do script, accesse a URL do load balancer usando a rota */admin/settings.php?section=tool_heartbeat*. Todos os itens devem estar marcados com ok. Apenas siga em frente.
 
 ![configure healthcheck](images/26-configure-healthcheck.png)
 
-27. Clique em "verificar atualizações disponíveis". Se tiver alguma, siga as orientações na tela.
+27. Clique em "verificar atualizações disponíveis". Se tiver alguma, siga as orientações na tela para realizar sua instalação.
 
 ![configure healthcheck](images/27-configure-healthcheck.png)
 
@@ -130,7 +130,7 @@ Ver no [GitHub](https://github.com/vitor-msp/moodle-infra).
 
 ![configure healthcheck](images/29-configure-healthcheck.png)
 
-30. Preencha o que for obrigatório e o que achar necessário.
+30. Preencha o que achar necessário.
 
 ![configure healthcheck](images/30-configure-healthcheck.png)
 
@@ -183,3 +183,7 @@ Ver no [GitHub](https://github.com/vitor-msp/moodle-infra).
 42.  A tela inicial da conta será exibida.
 
 ![access moodle](images/42-access-moodle.png)
+
+---
+
+fim
