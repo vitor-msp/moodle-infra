@@ -1,0 +1,9 @@
+title: Moodle AWS Infrastructure - Tutorial
+author:
+  name: Vítor Mateus
+  email: vitor7jan@gmail.com
+description: "Infraestrutura como código do Moodle usando Amazon CloudFormation."
+
+remote_theme: jekyll/minima
+
+markdown: GFM
