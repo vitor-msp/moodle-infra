@@ -2,6 +2,8 @@
 
 ### Infraestrutura como código do Moodle usando Amazon CloudFormation
 
+Ver no [GitHub](https://github.com/vitor-msp/moodle-infra).
+
 #### Importação de certificado TLS
 
 1. Gere um certificado TLS e abra a console da AWS no AWS Certificate Manager.
