@@ -355,6 +355,11 @@ Resources:
         KeyName: !Ref KeyPairName
         SecurityGroupIds: 
           - !Ref EC2SecurityGroup
+      TagSpecifications:
+        - ResourceType: launch-template
+          Tags:
+            - Key: Name
+              Value: !Sub "${ApplicationName}-ec2"
   AutoScalingGroup:
     Type: "AWS::AutoScaling::AutoScalingGroup"
     Properties:
