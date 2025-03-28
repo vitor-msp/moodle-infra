@@ -23,17 +23,15 @@ Parameters:
   MoodleCodeEFSHostname:
     Type: String
     Description: Moodle code EFS hostname
-
-Mappings:
-  MoodleMap:
-    AmiId:
-      Ubuntu2404: "ami-084568db4383264d4"
+  MoodleAMIImageID:
+    Type: String
+    Description: Moodle AMI image ID
 
 Resources:
   EC2Instance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: !FindInMap ["MoodleMap", "AmiId", "Ubuntu2404"]
+      ImageId: !Ref MoodleAMIImageID
       InstanceType: t2.micro
       KeyName: !Ref KeyPairName
       NetworkInterfaces:
