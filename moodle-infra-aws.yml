@@ -601,6 +601,9 @@ Outputs:
   DatabaseUser:
     Description: Database user
     Value: !FindInMap ["MoodleMap", "Database", "User"]
+  DatabaseName:
+    Description: Database name
+    Value: !FindInMap ["MoodleMap", "Database", "Name"]
   CacheHostname:
     Description: Cache hostname
     Value: !GetAtt CacheReplicationGroup.PrimaryEndPoint.Address
