@@ -355,7 +355,7 @@ Resources:
         SecurityGroupIds: 
           - !Ref EC2SecurityGroup
       TagSpecifications:
-        - ResourceType: launch-template
+        - ResourceType: instance
           Tags:
             - Key: Name
               Value: !Sub "${ApplicationName}-ec2"
